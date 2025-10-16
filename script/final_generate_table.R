@@ -1,0 +1,206 @@
+# Load necessary libraries for data manipulation, reading Excel, creating tables, and plotting.
+library(tidyverse)
+library(readxl)
+library(gt)
+library(gtExtras)
+library(scales)
+library(htmltools)
+
+# Read the main dataset and the mapping file.
+df = read_csv("data/WEOApr2025all.csv")
+mapping = read_excel("data/mapping.xlsx")
+
+# Source the script that contains plotting functions.
+source("script/get_plots.R",local = T)
+
+# Filter the dataset to include only the top 10 countries by GDP.
+filt_df = df %>% 
+  filter(Country %in% c("United States", "China", "Japan", "Germany", "India", "United Kingdom", "France", "Canada", "Italy", "Brazil"))
+
+# Replace non-standard missing value representations with NA.
+int_df = filt_df %>% 
+  mutate_all(.funs = ~ifelse(. == "n/a",NA,.)) %>% 
+  mutate_all(.funs = ~ifelse(. == "--",NA,.))
+
+# Identify all columns that are numeric years.
+all_numeric_cols = all_of(names(int_df)[!is.na(as.numeric(names(int_df)))])
+
+# Reshape the data from wide to long format, converting year to numeric and cleaning values.
+lng_int_df = int_df %>% 
+  pivot_longer(cols = !!all_numeric_cols,names_to = "year",values_to = "value") %>% 
+  mutate(value = as.numeric(str_remove_all(value,",")),
+         year = as.numeric(year)) %>% 
+  select(Country,`Subject Descriptor`,Units,Scale,`Country/Series-specific Notes`,`Estimates Start After`,year,value)
+
+# Prepare the data for the final table.
+tbl_data = lng_int_df %>% 
+  filter(year == `Estimates Start After`) %>% 
+  filter((`Subject Descriptor` == "Gross domestic product, current prices" & Units == "U.S. dollars")
+         | (`Subject Descriptor` == "Gross domestic product per capita, constant prices" & Units == "National currency")
+         | (`Subject Descriptor` == "Gross domestic product per capita, current prices" & Units == "U.S. dollars")
+         | `Subject Descriptor` == "Gross domestic product, constant prices"
+         | `Subject Descriptor` == "General government gross debt"
+         | (`Subject Descriptor` == "Inflation, average consumer prices" & Units == "Percent change")
+         | (`Subject Descriptor` == "Inflation, end of period consumer prices" & Units == "Percent change")
+         | `Subject Descriptor` == "Population") %>% 
+  mutate(piv_wdr_fld = paste0(`Subject Descriptor`," | ",Units)) %>% 
+  select(Country,piv_wdr_fld,value) %>% 
+  pivot_wider(names_from = piv_wdr_fld,values_from = value) %>% 
+  full_join(y = mapping,by = "Country") %>% 
+  rename(c("% Change in Real GDP"="Gross domestic product, constant prices | Percent change",
+           "Nominal GDP"="Gross domestic product, current prices | U.S. dollars",
+           "Population"="Population | Persons",
+           "Real GDP"="Gross domestic product, constant prices | National currency",
+           "Real GDP Per Capita"="Gross domestic product per capita, constant prices | National currency",
+           "Nominal GDP Per Capita"="Gross domestic product per capita, current prices | U.S. dollars",
+           "Gross Debt"="General government gross debt | National currency",
+           "Gross Debt % of GDP"="General government gross debt | Percent of GDP",
+           "EoY Inflation"="Inflation, end of period consumer prices | Percent change",
+           "Inflation"="Inflation, average consumer prices | Percent change"
+  )) %>% 
+  arrange(desc(`Nominal GDP`)) %>% 
+  mutate(Rank = rank(desc(`Nominal GDP`))) %>% 
+  mutate(Population = paste0("Pop. - ",round(Population,0),"M"),
+         `Nominal GDP` = scales::number(`Nominal GDP`,scale = 1,prefix = "$",suffix = "B",big.mark = ","),
+         `Real GDP` = scales::number(`Real GDP`,scale = 1,prefix = `Currency Symbol`,suffix = "B",big.mark = ","),
+         `Real GDP Per Capita` = scales::number(`Real GDP Per Capita`,scale = 1,prefix = `Currency Symbol`,suffix = " per capita",big.mark = ","),
+         `Nominal GDP Per Capita` = scales::number(`Nominal GDP Per Capita`,scale = 1,prefix = "$",suffix = " per capita",big.mark = ","),
+         `Gross Debt (% of GDP)` = scales::number(`Gross Debt`,scale = 1,prefix = `Currency Symbol`,suffix = "B",big.mark = ","),
+         `Gross Debt % of GDP` = scales::percent(`Gross Debt % of GDP`,accuracy = 0.01,scale = 1,prefix = "(",suffix = "%)"),
+         `EoY Inflation` = scales::percent(`EoY Inflation`,prefix = "EoY-",scale = 1,accuracy = 0.01),
+         Inflation = scales::percent(Inflation,scale = 1,accuracy = 0.01)
+  ) %>% 
+  mutate("Real GDP Trend" = Country,
+         "Nominal GDP Trend" = Country,
+         "Share of Global GDP (PPP)" = Country,
+         "Unemployment" = Country
+  ) %>% 
+  select(Rank,Flag,Country,Population,`Nominal GDP`,`Nominal GDP Per Capita`,`Nominal GDP Trend`,
+         `Real GDP`,`Real GDP Per Capita`,`% Change in Real GDP`,`Real GDP Trend`,
+         `Share of Global GDP (PPP)`,`Gross Debt (% of GDP)`,`Gross Debt % of GDP`,
+         Inflation,`EoY Inflation`,Unemployment)
+
+# Create and format the table using the gt package.
+tbl_data %>% 
+  gt() %>% 
+  opt_table_font(font = list(google_font("Inter"), "system-ui", "-apple-system", "sans-serif")) %>% 
+  tab_header(
+    title = md("**Economic Giants: A Global Snapshot**"),
+    subtitle = md("*Top 10 Countries by GDP • IMF World Economic Outlook 2024*")
+  ) %>%
+  tab_style(
+    style = cell_text(
+      color = "#10100F",
+      size = px(38),
+      weight = 800,align = "center",v_align = "middle"
+    ),
+    locations = cells_title(groups = "title")
+  ) %>%
+  tab_style(
+    style = cell_text(
+      color = "#64748b",
+      size = px(16),
+      style = "italic",
+      align = "center",
+      v_align = "middle"
+    ),
+    locations = cells_title(groups = "subtitle")
+  ) %>%
+  tab_options(
+    table.width = pct(100),
+    heading.background.color = "white",
+    heading.align = "left",
+    heading.border.bottom.color = "#10100F",
+    heading.title.font.size = px(26),
+    heading.subtitle.font.size = px(14),
+    heading.title.font.weight = "bold",
+    heading.subtitle.font.weight = "bold",
+    column_labels.font.weight = "bold",
+    column_labels.padding = px(20),
+    source_notes.padding = px(16),
+    table.font.size = px(14),
+    column_labels.background.color = "#10100F",
+    source_notes.background.color = "#10100F",
+    column_labels.border.lr.color = "#10100F",
+    column_labels.border.bottom.color = "#10100F",
+    column_labels.border.top.color = "#10100F",
+    table.border.top.color = "#10100F",
+    table.border.bottom.color = "#10100F",
+    source_notes.border.lr.color = "#10100F",
+    table_body.border.bottom.color = "#10100F",
+    heading.border.lr.color = "#10100F"
+  ) %>%
+  opt_table_lines(extent = "default") %>%
+  opt_row_striping(row_striping = TRUE) %>% 
+  tab_style(
+    style = cell_text(v_align = "middle",align = "center"),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = cell_text(v_align = "middle",align = "center"),
+    locations = cells_body(everything())
+  ) %>%
+  cols_label(
+    "Gross Debt (% of GDP)" = html(paste0("Gross Debt", br(), "(% of GDP)")),
+    "Rank" = "",
+    "% Change in Real GDP" = html(paste0("% Change", br(), "in Real GDP")),
+    "Share of Global GDP (PPP)" = html(paste0("Share of Global GDP", br(), "(PPP)"))
+  ) %>% 
+  gt_img_rows(columns = Flag,
+              height = c(30,40,35,37,38,28,35,35,30,38)) %>% 
+  text_transform(
+    locations = cells_body(columns = c(`% Change in Real GDP`)),
+    fn = function(x) {
+      x = as.numeric(x)
+      formatted_values = sprintf("%.2f%%", abs(x))
+      ifelse(
+        x > 0,
+        paste0("<span style='color:#27b7ac'>&#9650;</span> ", formatted_values),
+        paste0("<span style='color:#d82466'>&#9660;</span> -", formatted_values)
+      )
+    }
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = c(Rank)),
+    fn = function(x) {
+      final_val = case_when(
+        x == 1 ~ "🥇",
+        x == 2 ~ "🥈",
+        x == 3 ~ "🥉",
+        T ~ as.character(x)
+      )
+    }
+  ) %>% 
+  gt_merge_stack(col1 = Country,col2 = Population,font_size = px(c(14,12))) %>%
+  gt_merge_stack(col1 = `Real GDP`,col2 = `Real GDP Per Capita`,font_size = px(c(14,12))) %>%
+  gt_merge_stack(col1 = `Nominal GDP`,col2 = `Nominal GDP Per Capita`,font_size = px(c(14,12))) %>%
+  gt_merge_stack(col1 = `Gross Debt (% of GDP)`,col2 = `Gross Debt % of GDP`,font_size = px(c(14,12))) %>%
+  gt_merge_stack(col1 = Inflation,col2 = `EoY Inflation`,font_size = px(c(14,12))) %>%
+  text_transform(
+    locations = cells_body(columns = `Nominal GDP Trend`),
+    fn = function(x) {
+      map(x, ~ get_gdp_plot(req_country = .x,"Nominal")) %>% 
+        ggplot_image(height = px(50), aspect_ratio = 3.5)
+    }
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = `Real GDP Trend`),
+    fn = function(x) {
+      map(x, ~ get_gdp_plot(req_country = .x,"Real")) %>% 
+        ggplot_image(height = px(50), aspect_ratio = 3.5)
+    }
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = Unemployment),
+    fn = function(x) {
+      map(x, ~ get_unemp_plot(req_country = .x)) %>% 
+        ggplot_image(height = px(50), aspect_ratio = 3.5)
+    }
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = `Share of Global GDP (PPP)`),
+    fn = function(x) {
+      map(x, ~ get_shareofworld_plt(req_country = .x)) %>% 
+        ggplot_image(height = px(75), aspect_ratio = 1)
+    }
+  )
