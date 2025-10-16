@@ -7,7 +7,7 @@ This project generates a static HTML table displaying the top 10 economies by GD
 
 ## Features:
 
-* Top 10 economies by GDP (e.g., USA, China, Japan, Germany).
+* Top 10 economies by GDP (e.g., India, USA, China, Japan, Germany).
 * Key economic indicators (GDP, inflation, unemployment, debt).
 * Trend plots for GDP and unemployment.
 * Static HTML output, formatted for easy viewing.
