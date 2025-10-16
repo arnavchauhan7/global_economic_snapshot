@@ -23,4 +23,3 @@ This project generates a static HTML table displaying the top 10 economies by GD
 
 ---
 
-This version is now more concise without the license section. Let me know if you need any further changes!
