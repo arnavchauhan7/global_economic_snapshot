@@ -1,7 +1,7 @@
 # Economic Giants: A Global Snapshot
 
 **Description**:
-This project generates a static HTML table displaying the top 10 economies by GDP in 2025, based on IMF projections. It includes key economic indicators like nominal GDP, real GDP, per capita GDP, inflation, unemployment, and government debt, with trends visualized through static plots and country flags.
+This project generates a static HTML table displaying the top 10 economies by GDP in 2024, based on IMF data. It includes key economic indicators like nominal GDP, real GDP, per capita GDP, inflation, unemployment, and government debt, with trends visualized through static plots and country flags.
 
 ---
 
